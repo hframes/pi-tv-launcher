@@ -49,7 +49,14 @@ python3 scripts/validate_version.py v0.1.0
 
    This creates a tar.gz archive in the `dist/` directory together with a matching `.sha256` checksum file.
 
-6. Publish the archive and checksum as the official release artifact.
+6. Upload the package and checksum to the GitHub release:
+
+   ```bash
+   ./scripts/upload_release.py v0.1.0
+   ```
+
+   The helper builds the release package if needed, creates the GitHub release if it does not exist, and uploads both artifacts.
+
 7. Verify the downloaded package before installing it:
 
    ```bash
