@@ -1,0 +1,9 @@
+# Release artifacts
+/dist/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Editor files
+.vscode/
