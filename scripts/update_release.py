@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -144,6 +145,87 @@ def extract_release(archive_path: Path, destination_dir: Path) -> Path:
     return top_level[0]
 
 
+def release_version(release_dir: Path) -> str:
+    version_file = release_dir / "version.py"
+    if not version_file.exists():
+        raise FileNotFoundError(f"Release directory is missing version metadata: {release_dir}")
+
+    namespace = {}
+    exec(version_file.read_text(encoding="utf-8"), namespace)
+    return str(namespace["__version__"])
+
+
+def write_status(install_root: Path, *, active_version: str, state: str = "ready") -> None:
+    install_root.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "active_version": active_version,
+        "state": state,
+    }
+    (install_root / ".update-status.json").write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def read_status(install_root: Path) -> dict[str, str]:
+    status_file = install_root / ".update-status.json"
+    if status_file.exists():
+        return json.loads(status_file.read_text(encoding="utf-8"))
+
+    current_link = install_root / "current"
+    if current_link.exists() or current_link.is_symlink():
+        active_version = current_link.resolve().name
+        return {"active_version": active_version, "state": "ready"}
+
+    return {"active_version": "unknown", "state": "uninitialized"}
+
+
+def install_release(source_dir: Path, install_root: Path) -> Path:
+    install_root.mkdir(parents=True, exist_ok=True)
+    version = release_version(source_dir)
+    release_dir = install_root / "releases" / version
+    releases_dir = install_root / "releases"
+    releases_dir.mkdir(parents=True, exist_ok=True)
+
+    if release_dir.exists():
+        raise FileExistsError(f"Release {version} is already installed at {release_dir}")
+
+    staging_dir = install_root / ".staging" / version
+    if staging_dir.exists():
+        shutil.rmtree(staging_dir)
+    shutil.copytree(source_dir, staging_dir)
+
+    os.replace(staging_dir, release_dir)
+
+    current_link = install_root / "current"
+    previous_version = None
+    if current_link.exists() or current_link.is_symlink():
+        previous_target = current_link.resolve()
+        previous_version = previous_target.name if previous_target.exists() else None
+        previous_link = install_root / "previous"
+        if previous_link.exists() or previous_link.is_symlink():
+            previous_link.unlink()
+        os.symlink(f"releases/{version}", previous_link)
+
+    next_current = install_root / ".current.new"
+    if next_current.exists() or next_current.is_symlink():
+        next_current.unlink()
+    os.symlink(f"releases/{version}", next_current)
+    os.replace(next_current, current_link)
+
+    if previous_version is not None:
+        retain = {version, previous_version}
+    else:
+        retain = {version}
+
+    for candidate in sorted(releases_dir.iterdir(), key=lambda item: item.name):
+        if candidate.name not in retain and candidate.is_dir():
+            shutil.rmtree(candidate)
+
+    write_status(install_root, active_version=version, state="ready")
+    return release_dir
+
+
 def resolve_repo() -> str:
     try:
         return repository_name()
@@ -153,7 +235,7 @@ def resolve_repo() -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Check the latest GitHub release and stage it without modifying a live installation.",
+        description="Check the latest GitHub release and install it into a versioned layout without modifying the active pointer in place.",
     )
     parser.add_argument(
         "--repo",
@@ -169,7 +251,12 @@ def parse_args() -> argparse.Namespace:
         "--install-dir",
         type=Path,
         default=None,
-        help="Optional destination directory for the extracted release when not using dry-run mode.",
+        help="Root directory for versioned releases. The active version is exposed via the current symlink.",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Print the active version and update status for the install root.",
     )
     return parser.parse_args()
 
@@ -178,8 +265,14 @@ def main() -> int:
     try:
         args = parse_args()
         repo = args.repo or resolve_repo()
-        installed_version = read_version()
 
+        if args.status:
+            install_root = args.install_dir or Path("/opt/pi-tv-launcher")
+            status = read_status(install_root)
+            print(json.dumps(status, indent=2, sort_keys=True))
+            return 0
+
+        installed_version = read_version()
         latest = latest_release_tag(repo)
         print(f"Installed version: {installed_version}")
         print(f"Latest release: {latest}")
@@ -189,7 +282,7 @@ def main() -> int:
             return 0
 
         if args.install_dir is None:
-            raise ValueError("An install directory is required when not using --dry-run.")
+            raise ValueError("An install directory is required when not using --dry-run or --status.")
 
         with tempfile.TemporaryDirectory(prefix="pi-tv-launcher-update-") as temp_dir:
             staging_dir = Path(temp_dir)
@@ -197,13 +290,14 @@ def main() -> int:
             extraction_dir = staging_dir / "staged-release"
             extracted_path = extract_release(archive_path, extraction_dir)
 
-            install_dir = args.install_dir
-            shutil.copytree(extracted_path, install_dir, dirs_exist_ok=True)
-            print(f"Release {latest} verified and staged at {install_dir}")
+            install_root = args.install_dir
+            install_release(extracted_path, install_root)
+            print(f"Release {latest} verified and installed under {install_root / 'releases'}")
             print(f"Checksum verified: {checksum_path}")
+            print(f"Active version: {read_status(install_root)['active_version']}")
             return 0
 
-    except (RuntimeError, ValueError, FileNotFoundError, subprocess.CalledProcessError) as error:
+    except (RuntimeError, ValueError, FileNotFoundError, subprocess.CalledProcessError, FileExistsError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
 

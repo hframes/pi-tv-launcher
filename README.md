@@ -130,4 +130,28 @@ The updater fails safely if:
 - the checksum does not match the downloaded archive,
 - the downloaded artifact is malformed or incomplete.
 
+## Versioned Pi installations
+
+Releases are installed into a versioned directory layout instead of modifying the active installation in place. The update flow keeps the live release stable until a new version is fully staged and activated.
+
+A typical install root looks like this:
+
+```text
+/opt/pi-tv-launcher/
+├── current -> releases/0.1.1
+├── previous -> releases/0.1.0
+├── releases/
+│   ├── 0.1.0/
+│   └── 0.1.1/
+├── .update-status.json
+└── .staging/
+```
+
+The `current` symlink is replaced atomically, so an interrupted or failed installation cannot leave the launcher half-updated. The previous version remains available until the next update, and the active version plus update state can be inspected from the install root:
+
+```bash
+readlink /opt/pi-tv-launcher/current
+cat /opt/pi-tv-launcher/.update-status.json
+```
+
 Development work should keep the `-dev` suffix. The release package and future updater will use official version tags rather than commits from `main`.
