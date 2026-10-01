@@ -166,4 +166,65 @@ cat /opt/pi-tv-launcher/.update-status.json
 
 The rollback command restores the previous release without requiring a full reinstall and keeps the failed version available for diagnosis or a second retry.
 
+## Local validation before the first Pi deployment
+
+Before the first production launch, validate the local development environment and the Raspberry Pi prerequisites with the built-in preflight check:
+
+```bash
+python3 scripts/check_pi_environment.py
+```
+
+The check validates these required conditions:
+
+- Chromium is installed and available on the PATH.
+- Pillow is available for image loading and resizing.
+- A graphical display is available so the launcher can render in the Pi desktop session.
+- The `assets/` directory is present in the release payload.
+- Outbound network access is available for release and update checks.
+
+## Clean Raspberry Pi installation
+
+Use this procedure for the first installation on a Pi that does not have the launcher yet:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3 python3-pil python3-tk chromium
+sudo mkdir -p /opt/pi-tv-launcher
+cd /opt/pi-tv-launcher
+sudo tar -xzf /path/to/pi-tv-launcher-v0.1.0.tar.gz .
+```
+
+Then install and start the systemd service:
+
+```bash
+sudo cp /opt/pi-tv-launcher-v0.1.0/launcher.service /etc/systemd/system/pi-tv-launcher.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now pi-tv-launcher.service
+sudo systemctl status pi-tv-launcher.service
+```
+
+## First deployment checklist
+
+Before promoting the release to the first production Pi, verify each item below:
+
+- Chromium is installed and can launch in kiosk mode.
+- Pillow is installed and imports correctly.
+- The Pi has a working X display session (`DISPLAY=:0` and Xauthority available).
+- The `assets/` directory contains all launcher logos.
+- The Pi can reach GitHub to download the release and update metadata.
+- The service starts successfully after boot and survives a restart.
+
+## End-to-end update validation
+
+Before the first production deployment, run the update flow on a staging Pi or test host without changing the active installation:
+
+```bash
+python3 scripts/update_release.py --repo hframes/pi-tv-launcher --dry-run
+python3 scripts/check_pi_environment.py
+readlink /opt/pi-tv-launcher/current
+cat /opt/pi-tv-launcher/.update-status.json
+```
+
+This confirms the release metadata is discoverable, the environment is ready, and the install root would behave correctly when an update is applied.
+
 Development work should keep the `-dev` suffix. The release package and future updater will use official version tags rather than commits from `main`.
