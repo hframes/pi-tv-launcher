@@ -108,4 +108,26 @@ sudo systemctl disable --now pi-tv-launcher.service
 journalctl -u pi-tv-launcher.service -f
 ```
 
+## Checking for a release update
+
+The project includes a lightweight updater script that checks the latest GitHub release, downloads the archive to a temporary staging directory, verifies the checksum, and reports what it would do in dry-run mode without changing the current installation.
+
+```bash
+python3 scripts/update_release.py --dry-run
+```
+
+To run the updater against a specific repository or installation target:
+
+```bash
+python3 scripts/update_release.py --repo hframes/pi-tv-launcher --dry-run
+python3 scripts/update_release.py --repo hframes/pi-tv-launcher --install-dir /opt/pi-tv-launcher
+```
+
+The updater fails safely if:
+
+- the GitHub release metadata cannot be read,
+- no release is available,
+- the checksum does not match the downloaded archive,
+- the downloaded artifact is malformed or incomplete.
+
 Development work should keep the `-dev` suffix. The release package and future updater will use official version tags rather than commits from `main`.
