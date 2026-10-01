@@ -64,4 +64,20 @@ python3 scripts/validate_version.py v0.1.0
    sha256sum -c pi-tv-launcher-v0.1.0.tar.gz.sha256
    ```
 
+## Release artifact contents
+
+The packaging step creates a versioned archive and checksum in `dist/`:
+
+- `pi-tv-launcher-v0.1.0.tar.gz`
+- `pi-tv-launcher-v0.1.0.tar.gz.sha256`
+
+The archive contains the runtime payload for the Raspberry Pi:
+
+- `launcher.py`
+- `version.py`
+- `README.md`
+- `assets/`
+
+This keeps the published release self-contained and verifiable before installation.
+
 Development work should keep the `-dev` suffix. The release package and future updater will use official version tags rather than commits from `main`.
