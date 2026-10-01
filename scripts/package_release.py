@@ -59,7 +59,7 @@ def build_release(version: str, output_dir: Path) -> tuple[Path, Path]:
 
     staging_dir.mkdir(parents=True, exist_ok=True)
 
-    for relative_path in ("launcher.py", "version.py", "README.md", "assets"):
+    for relative_path in ("launcher.py", "launcher.service", "version.py", "README.md", "assets"):
         source_path = ROOT / relative_path
         if not source_path.exists():
             raise FileNotFoundError(f"Required release item is missing: {source_path}")
