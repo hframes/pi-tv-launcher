@@ -154,4 +154,16 @@ readlink /opt/pi-tv-launcher/current
 cat /opt/pi-tv-launcher/.update-status.json
 ```
 
+## Manual rollback procedure
+
+If a new release fails to start or behaves incorrectly, you can restore the previously known-good version by switching the active pointer back to the `previous` release:
+
+```bash
+python3 scripts/update_release.py --install-dir /opt/pi-tv-launcher --rollback
+readlink /opt/pi-tv-launcher/current
+cat /opt/pi-tv-launcher/.update-status.json
+```
+
+The rollback command restores the previous release without requiring a full reinstall and keeps the failed version available for diagnosis or a second retry.
+
 Development work should keep the `-dev` suffix. The release package and future updater will use official version tags rather than commits from `main`.

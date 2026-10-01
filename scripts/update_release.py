@@ -205,7 +205,8 @@ def install_release(source_dir: Path, install_root: Path) -> Path:
         previous_link = install_root / "previous"
         if previous_link.exists() or previous_link.is_symlink():
             previous_link.unlink()
-        os.symlink(f"releases/{version}", previous_link)
+        if previous_version is not None:
+            os.symlink(f"releases/{previous_version}", previous_link)
 
     next_current = install_root / ".current.new"
     if next_current.exists() or next_current.is_symlink():
@@ -224,6 +225,39 @@ def install_release(source_dir: Path, install_root: Path) -> Path:
 
     write_status(install_root, active_version=version, state="ready")
     return release_dir
+
+
+def rollback_release(install_root: Path) -> Path:
+    install_root.mkdir(parents=True, exist_ok=True)
+    previous_link = install_root / "previous"
+    if not previous_link.exists() and not previous_link.is_symlink():
+        raise FileNotFoundError(f"No previous release exists to roll back to in {install_root}")
+
+    current_link = install_root / "current"
+    if not current_link.exists() and not current_link.is_symlink():
+        raise FileNotFoundError(f"No active release is installed in {install_root}")
+
+    current_target = current_link.resolve()
+    if not current_target.exists():
+        raise FileNotFoundError(f"Current release target is missing: {current_target}")
+
+    previous_target = previous_link.resolve()
+    if not previous_target.exists():
+        raise FileNotFoundError(f"Previous release target is missing: {previous_target}")
+
+    rollback_version = previous_target.name
+    next_current = install_root / ".current.new"
+    if next_current.exists() or next_current.is_symlink():
+        next_current.unlink()
+    os.symlink(previous_target.relative_to(install_root), next_current)
+    os.replace(next_current, current_link)
+
+    if previous_link.exists() or previous_link.is_symlink():
+        previous_link.unlink()
+    os.symlink(f"releases/{current_target.name}", previous_link)
+
+    write_status(install_root, active_version=rollback_version, state="rolled_back")
+    return install_root / "releases" / rollback_version
 
 
 def resolve_repo() -> str:
@@ -258,6 +292,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print the active version and update status for the install root.",
     )
+    parser.add_argument(
+        "--rollback",
+        action="store_true",
+        help="Restore the previous known-good release using the previous symlink.",
+    )
     return parser.parse_args()
 
 
@@ -272,6 +311,14 @@ def main() -> int:
             print(json.dumps(status, indent=2, sort_keys=True))
             return 0
 
+        if args.rollback:
+            if args.install_dir is None:
+                raise ValueError("--install-dir is required when using --rollback.")
+            restore_target = rollback_release(args.install_dir)
+            print(f"Rolled back to {restore_target.name}")
+            print(json.dumps(read_status(args.install_dir), indent=2, sort_keys=True))
+            return 0
+
         installed_version = read_version()
         latest = latest_release_tag(repo)
         print(f"Installed version: {installed_version}")
@@ -282,7 +329,7 @@ def main() -> int:
             return 0
 
         if args.install_dir is None:
-            raise ValueError("An install directory is required when not using --dry-run or --status.")
+            raise ValueError("An install directory is required when not using --dry-run, --status, or --rollback.")
 
         with tempfile.TemporaryDirectory(prefix="pi-tv-launcher-update-") as temp_dir:
             staging_dir = Path(temp_dir)
